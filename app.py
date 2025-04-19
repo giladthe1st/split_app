@@ -25,7 +25,7 @@ with st.sidebar.form("add_participant_form"):
             try:
                 add_participant(new_name.strip())
                 st.success(f"Added {new_name.strip()}!")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.warning(f"Could not add: {e}")
 
@@ -36,7 +36,7 @@ if participants:
         col1.write(f"👤 {name}")
         if col2.button("Remove", key=f"remove_{pid}"):
             remove_participant(pid)
-            st.experimental_rerun()
+            st.rerun()
 
 # Main: Add a Bill
 st.header("Add a Bill or Expense")
@@ -84,7 +84,7 @@ with st.expander("Add or Edit a Bill", expanded=True):
             else:
                 add_transaction(desc, amt, payer, involved, datetime.datetime.now().isoformat())
                 st.success("Bill added and split!")
-                st.experimental_rerun()
+                st.rerun()
     else:
         if not transactions:
             st.info("No bills to edit yet. Add one first!")
@@ -119,11 +119,11 @@ with st.expander("Add or Edit a Bill", expanded=True):
                     else:
                         update_transaction(selected_tid, desc, amt, payer, involved, datetime.datetime.now().isoformat())
                         st.success("Transaction updated!")
-                        st.experimental_rerun()
+                        st.rerun()
                 if st.button("Delete Transaction"):
                     delete_transaction(selected_tid)
                     st.success("Transaction deleted!")
-                    st.experimental_rerun()
+                    st.rerun()
 
 # Transactions Table
 if transactions:
