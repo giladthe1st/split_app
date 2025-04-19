@@ -59,12 +59,29 @@ with st.expander("Add/Edit Transaction", expanded=True):
                 _, desc, amt, payer, involved_json, ts = txn
                 desc = st.text_input("Description", value=desc)
                 amt = st.number_input("Amount", min_value=0.01, step=0.01, value=float(amt))
-                payer = st.selectbox("Payer", options=participant_dict.keys(), index=list(participant_dict.keys()).index(payer), format_func=lambda x: participant_dict[x])
-                involved = st.multiselect("Participants Involved", options=participant_dict.keys(), default=json.loads(involved_json), format_func=lambda x: participant_dict[x])
-                if st.button("Update Transaction") and desc and amt > 0 and payer in involved and involved:
-                    update_transaction(selected_tid, desc, amt, payer, involved, datetime.datetime.now().isoformat())
-                    st.success("Transaction updated!")
-                    st.experimental_rerun()
+                involved_default = json.loads(involved_json)
+                # Filter involved_default to only valid participants
+                valid_involved_default = [pid for pid in involved_default if pid in participant_dict]
+                if len(valid_involved_default) < len(involved_default):
+                    st.warning("Some participants in this transaction were removed from the group. They have been excluded from the edit form.")
+                involved = st.multiselect("Participants Involved", options=participant_dict.keys(), default=valid_involved_default, format_func=lambda x: participant_dict[x])
+                # If payer is not in the new involved list, auto-select a new payer and warn
+                if payer not in involved and involved:
+                    payer = involved[0]
+                    st.warning("Payer was not in the new involved list. Automatically switched payer to a valid participant.")
+                payer = st.selectbox("Payer", options=involved if involved else participant_dict.keys(), index=(involved.index(payer) if payer in involved else 0), format_func=lambda x: participant_dict[x])
+                update_clicked = st.button("Update Transaction")
+                if update_clicked:
+                    if not involved:
+                        st.error("You must select at least one participant involved in the transaction.")
+                    elif payer not in involved:
+                        st.error("Payer must be one of the involved participants.")
+                    elif not desc or amt <= 0:
+                        st.error("Please provide a valid description and amount.")
+                    else:
+                        update_transaction(selected_tid, desc, amt, payer, involved, datetime.datetime.now().isoformat())
+                        st.success("Transaction updated!")
+                        st.experimental_rerun()
                 if st.button("Delete Transaction"):
                     delete_transaction(selected_tid)
                     st.success("Transaction deleted!")
@@ -99,6 +116,34 @@ if balances:
 
     st.subheader("Settle Up")
     transfers = min_transfers(balances)
+    # --- WhatsApp-friendly summary ---
+    expense_lines = ["*Expenses:*"]
+    for tid, desc, amt, payer, involved_json, ts in transactions[::-1]:
+        involved_names = ", ".join([participant_dict.get(pid, str(pid)) for pid in json.loads(involved_json) if pid in participant_dict])
+        payer_name = participant_dict.get(payer, str(payer))
+        expense_lines.append(f"- {desc}: ${amt:.2f}\n  Paid by: {payer_name}\n  Split among: {involved_names}")
+    if len(expense_lines) == 1:
+        expense_lines.append("No expenses recorded.")
+
+    balance_lines = ["*Balances:*"]
+    for pid, amt in balances.items():
+        balance_lines.append(f"{participant_dict.get(pid, str(pid))}: {'+' if amt >= 0 else ''}${amt:.2f}")
+
+    settle_lines = ["*Settle Up:*"]
+    if transfers:
+        for from_id, to_id, amt in transfers:
+            settle_lines.append(f"{participant_dict.get(from_id, str(from_id))} ➔ {participant_dict.get(to_id, str(to_id))}: ${amt:.2f}")
+    else:
+        settle_lines.append("All settled!")
+
+    wa_summary = "\n\n".join([
+        "\n".join(expense_lines),
+        "\n".join(balance_lines),
+        "\n".join(settle_lines)
+    ])
+    st.code(wa_summary, language="")
+    st.caption("Click the 'Copy' button above to copy the summary, then paste into WhatsApp or any chat.")
+    # ---
     if transfers:
         for from_id, to_id, amt in transfers:
             st.write(f"{participant_dict.get(from_id, str(from_id))} → {participant_dict.get(to_id, str(to_id))}: ${amt:.2f}")

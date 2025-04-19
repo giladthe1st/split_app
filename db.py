@@ -34,8 +34,25 @@ def add_participant(name: str):
 def remove_participant(pid: int):
     with get_connection() as conn:
         c = conn.cursor()
+        # Get all transactions
+        c.execute('SELECT id, payer_id, involved_ids, description, amount, timestamp FROM transactions')
+        txns = c.fetchall()
+        for tid, payer_id, involved_json, description, amount, timestamp in txns:
+            involved = json.loads(involved_json)
+            if pid in involved:
+                involved = [x for x in involved if x != pid]
+                if len(involved) < 2:
+                    # Not enough people to split, delete transaction
+                    c.execute('DELETE FROM transactions WHERE id=?', (tid,))
+                    continue
+                # If payer is being removed, reassign payer to first remaining involved participant
+                if payer_id == pid:
+                    payer_id = involved[0]
+                # Update transaction
+                c.execute('''UPDATE transactions SET payer_id=?, involved_ids=? WHERE id=?''',
+                          (payer_id, json.dumps(involved), tid))
+        # Remove participant from participants table
         c.execute('DELETE FROM participants WHERE id=?', (pid,))
-        c.execute('DELETE FROM transactions WHERE payer_id=?', (pid,))
         conn.commit()
 
 def get_participants() -> List[Tuple[int, str]]:
