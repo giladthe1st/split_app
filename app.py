@@ -9,56 +9,94 @@ import json
 st.set_page_config(page_title="Split App", layout="wide")
 init_db()
 
-st.title("Split App: Bill Splitting Made Easy")
+st.title("Split App: Split Bills in Seconds")
 
 # Sidebar: Participants
-st.sidebar.header("Participants")
+st.sidebar.header("Who's joining the split?")
 participants = get_participants()
 participant_dict = {pid: name for pid, name in participants}
 
 with st.sidebar.form("add_participant_form"):
-    new_name = st.text_input("Add participant by name")
-    if st.form_submit_button("Add") and new_name.strip():
-        try:
-            add_participant(new_name.strip())
-            st.experimental_rerun()
-        except Exception as e:
-            st.warning(f"Could not add: {e}")
+    new_name = st.text_input("Enter a name (e.g., Sam)")
+    if st.form_submit_button("Add"):
+        if not new_name.strip():
+            st.warning("Please enter a name.")
+        else:
+            try:
+                add_participant(new_name.strip())
+                st.success(f"Added {new_name.strip()}!")
+                st.experimental_rerun()
+            except Exception as e:
+                st.warning(f"Could not add: {e}")
 
 if participants:
     st.sidebar.write("### Current Participants:")
     for pid, name in participants:
         col1, col2 = st.sidebar.columns([3,1])
-        col1.write(name)
+        col1.write(f"👤 {name}")
         if col2.button("Remove", key=f"remove_{pid}"):
             remove_participant(pid)
             st.experimental_rerun()
 
-# Main: Transactions
-st.header("Transactions")
+# Main: Add a Bill
+st.header("Add a Bill or Expense")
 transactions = get_transactions()
 
-# Transaction Form
-with st.expander("Add/Edit Transaction", expanded=True):
-    edit_mode = st.selectbox("Mode", ["Add New", "Edit Existing"])
+with st.expander("Add or Edit a Bill", expanded=True):
+    if "edit_mode" not in st.session_state:
+        st.session_state.edit_mode = "Add New"
+
+    col1, col2 = st.columns([0.1, 1])
+
+    add_clicked = col1.button(
+        "Add New",
+        key="add_new_btn",
+        type="primary" if st.session_state.edit_mode == "Add New" else "secondary"
+    )
+    edit_clicked = col2.button(
+        "Edit Existing",
+        key="edit_existing_btn",
+        type="primary" if st.session_state.edit_mode == "Edit Existing" else "secondary"
+    )
+
+    if add_clicked:
+        st.session_state.edit_mode = "Add New"
+        st.rerun()
+    elif edit_clicked:
+        st.session_state.edit_mode = "Edit Existing"
+        st.rerun()
+
+    edit_mode = st.session_state.edit_mode
     if edit_mode == "Add New":
-        desc = st.text_input("Description")
-        amt = st.number_input("Amount", min_value=0.01, step=0.01)
-        payer = st.selectbox("Payer", options=participant_dict.keys(), format_func=lambda x: participant_dict[x])
-        involved = st.multiselect("Participants Involved", options=participant_dict.keys(), default=list(participant_dict.keys()), format_func=lambda x: participant_dict[x])
-        if st.button("Add Transaction") and desc and amt > 0 and payer in involved and involved:
-            add_transaction(desc, amt, payer, involved, datetime.datetime.now().isoformat())
-            st.success("Transaction added!")
-            st.experimental_rerun()
+        desc = st.text_input("What was the bill for? (e.g., Pizza)")
+        amt = st.number_input("How much was it?", min_value=0.01, step=0.01)
+        payer = st.selectbox("Who paid?", options=participant_dict.keys(), format_func=lambda x: participant_dict[x])
+        involved = st.multiselect("Who shared this?", options=participant_dict.keys(), default=list(participant_dict.keys()), format_func=lambda x: participant_dict[x])
+        if st.button("Split this bill"):
+            if not desc:
+                st.error("Please describe the bill (e.g., 'Groceries').")
+            elif amt <= 0:
+                st.error("Amount must be greater than zero.")
+            elif not involved:
+                st.error("Please select at least one participant.")
+            elif payer not in involved:
+                st.error("The payer must be one of the participants involved.")
+            else:
+                add_transaction(desc, amt, payer, involved, datetime.datetime.now().isoformat())
+                st.success("Bill added and split!")
+                st.experimental_rerun()
     else:
-        txn_options = {tid: f"{desc} (${amt:.2f})" for tid, desc, amt, payer, involved, ts in transactions}
-        selected_tid = st.selectbox("Select Transaction to Edit", options=list(txn_options.keys()), format_func=lambda x: txn_options[x] if x in txn_options else str(x))
-        if selected_tid:
-            txn = next((t for t in transactions if t[0] == selected_tid), None)
-            if txn:
-                _, desc, amt, payer, involved_json, ts = txn
-                desc = st.text_input("Description", value=desc)
-                amt = st.number_input("Amount", min_value=0.01, step=0.01, value=float(amt))
+        if not transactions:
+            st.info("No bills to edit yet. Add one first!")
+        else:
+            txn_options = {tid: f"{desc} (${amt:.2f})" for tid, desc, amt, payer, involved, ts in transactions}
+            selected_tid = st.selectbox("Which bill do you want to edit?", options=list(txn_options.keys()), format_func=lambda x: txn_options[x] if x in txn_options else str(x))
+            if selected_tid:
+                txn = next((t for t in transactions if t[0] == selected_tid), None)
+                if txn:
+                    _, desc, amt, payer, involved_json, ts = txn
+                    desc = st.text_input("Description", value=desc)
+                    amt = st.number_input("Amount", min_value=0.01, step=0.01, value=float(amt))
                 involved_default = json.loads(involved_json)
                 # Filter involved_default to only valid participants
                 valid_involved_default = [pid for pid in involved_default if pid in participant_dict]
@@ -89,30 +127,39 @@ with st.expander("Add/Edit Transaction", expanded=True):
 
 # Transactions Table
 if transactions:
-    st.subheader("All Transactions")
+    st.subheader("All Bills & Expenses")
     df = pd.DataFrame([
         {
             "Description": desc,
             "Amount": amt,
             "Payer": participant_dict.get(payer, str(payer)),
-            "Involved": ", ".join([participant_dict.get(pid, str(pid)) for pid in json.loads(involved)]),
-            "Timestamp": ts
+            "Shared By": ", ".join([participant_dict.get(pid, str(pid)) for pid in json.loads(involved)]),
+            "Date": ts.split("T")[0] if "T" in ts else ts
         }
         for tid, desc, amt, payer, involved, ts in transactions
     ])
     st.dataframe(df, use_container_width=True)
 else:
-    st.info("No transactions yet. Add one above!")
+    st.info("No bills yet. Add your first one above!")
 
 # Summary
-st.header("Summary & Balances")
+st.header("Who Owes What? 🧾")
 balances = calculate_balances(participants, transactions)
 if balances:
     bal_df = pd.DataFrame([
         {"Participant": participant_dict.get(pid, str(pid)), "Balance": round(amt, 2)}
         for pid, amt in balances.items()
     ])
-    st.dataframe(bal_df, use_container_width=True)
+    # Use color for balances: positive = green, negative = red
+    def color_bal(val):
+        color = 'green' if val >= 0 else 'red'
+        return f'color: {color}'
+    st.dataframe(
+    bal_df.style
+        .map(color_bal, subset=["Balance"])
+        .format({"Balance": "{:.2f}"}),
+    use_container_width=True
+)
 
     st.subheader("Settle Up")
     transfers = min_transfers(balances)
@@ -142,12 +189,6 @@ if balances:
         "\n".join(settle_lines)
     ])
     st.code(wa_summary, language="")
-    st.caption("Click the 'Copy' button above to copy the summary, then paste into WhatsApp or any chat.")
     # ---
-    if transfers:
-        for from_id, to_id, amt in transfers:
-            st.write(f"{participant_dict.get(from_id, str(from_id))} → {participant_dict.get(to_id, str(to_id))}: ${amt:.2f}")
-    else:
-        st.success("All settled!")
 else:
-    st.info("Add participants and transactions to see balances.")
+    st.info("Add everyone and a bill to see who owes what.")
