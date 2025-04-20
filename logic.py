@@ -5,7 +5,7 @@ from typing import List, Dict, Tuple
 def calculate_balances(participants: List[Tuple[int, str]], transactions: List[Tuple]) -> Dict[int, float]:
     # Returns {participant_id: net_balance}
     balances = defaultdict(float)
-    for tid, desc, amount, payer_id, involved_ids_json, timestamp in transactions:
+    for tid, _, desc, amount, payer_id, involved_ids_json, settled_ids_json, timestamp in transactions:
         involved_ids = json.loads(involved_ids_json)
         split = amount / len(involved_ids)
         for pid in involved_ids:
