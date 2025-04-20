@@ -171,15 +171,14 @@ if balances:
             # Use session state for immediate feedback
             if key not in st.session_state:
                 st.session_state[key] = is_transfer_settled(from_id, to_id, amt)
-            cols = st.columns([0.1, 10])  # Tighter alignment between checkbox and label
-            with cols[0]:
-                new_checked = st.checkbox(base_label, value=st.session_state[key], key=key, label_visibility="collapsed")
-            with cols[1]:
-                display_label = f"~~{base_label}~~" if new_checked else base_label
-                st.markdown(display_label)
-            if new_checked != is_transfer_settled(from_id, to_id, amt):
-                set_transfer_settled(from_id, to_id, amt, new_checked)
-
+            # Use strikethrough in the label if settled
+            label = f"~~{base_label}~~" if st.session_state[key] else base_label
+            if st.button(label, key=f"btn_{key}"):
+                new_state = not st.session_state[key]
+                set_transfer_settled(from_id, to_id, amt, new_state)
+                st.session_state[key] = new_state
+                st.rerun()
+            
     else:
         st.write("All settled!")
     # --- WhatsApp-friendly summary ---
