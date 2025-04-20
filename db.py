@@ -23,7 +23,37 @@ def init_db():
             timestamp TEXT NOT NULL,
             FOREIGN KEY(payer_id) REFERENCES participants(id)
         )''')
+        # New table for settled transfers
+        c.execute('''CREATE TABLE IF NOT EXISTS settled_transfers (
+            from_id INTEGER NOT NULL,
+            to_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            settled INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (from_id, to_id, amount)
+        )''')
         conn.commit()
+
+# --- Settled Transfers Helpers ---
+def is_transfer_settled(from_id: int, to_id: int, amount: float) -> bool:
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('''SELECT settled FROM settled_transfers WHERE from_id=? AND to_id=? AND amount=?''', (from_id, to_id, amount))
+        row = c.fetchone()
+        return bool(row and row[0])
+
+def set_transfer_settled(from_id: int, to_id: int, amount: float, settled: bool):
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('''INSERT OR REPLACE INTO settled_transfers (from_id, to_id, amount, settled) VALUES (?, ?, ?, ?)''',
+                  (from_id, to_id, amount, int(settled)))
+        conn.commit()
+
+def get_all_settled_transfers() -> list:
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('SELECT from_id, to_id, amount, settled FROM settled_transfers WHERE settled=1')
+        return c.fetchall()
+
 
 def add_participant(name: str):
     with get_connection() as conn:

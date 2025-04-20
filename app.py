@@ -162,7 +162,26 @@ if balances:
 )
 
     st.subheader("Settle Up")
+    from db import is_transfer_settled, set_transfer_settled
     transfers = min_transfers(balances)
+    if transfers:
+        for from_id, to_id, amt in transfers:
+            base_label = f"{participant_dict.get(from_id, str(from_id))} ➔ {participant_dict.get(to_id, str(to_id))}: ${amt:.2f}"
+            key = f"settle_{from_id}_{to_id}_{amt}"
+            # Use session state for immediate feedback
+            if key not in st.session_state:
+                st.session_state[key] = is_transfer_settled(from_id, to_id, amt)
+            cols = st.columns([0.1, 10])  # Tighter alignment between checkbox and label
+            with cols[0]:
+                new_checked = st.checkbox(base_label, value=st.session_state[key], key=key, label_visibility="collapsed")
+            with cols[1]:
+                display_label = f"~~{base_label}~~" if new_checked else base_label
+                st.markdown(display_label)
+            if new_checked != is_transfer_settled(from_id, to_id, amt):
+                set_transfer_settled(from_id, to_id, amt, new_checked)
+
+    else:
+        st.write("All settled!")
     # --- WhatsApp-friendly summary ---
     expense_lines = ["*Expenses:*"]
     for tid, desc, amt, payer, involved_json, ts in transactions[::-1]:
